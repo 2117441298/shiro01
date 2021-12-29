@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:context="http://www.springframework.org/schema/context"
+       xmlns:tx="http://www.springframework.org/schema/tx"
+       xmlns="http://www.springframework.org/schema/beans"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop-4.3.xsd
+		http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-4.3.xsd
+		http://www.springframework.org/schema/tx http://www.springframework.org/schema/tx/spring-tx-4.3.xsd">
+
+
+    <!--1. 注解式开发，启动ssm所需要的注解 映射 适配 Controller @单词-->
+    <!-- 注解驱动 -->
+    <context:annotation-config/>
+    <!-- 用注解方式注入bean，并指定查找范围：com.zking.ssh2及子子孙孙包-->
+    <context:component-scan base-package="com.zking" use-default-filters="true">
+        <context:exclude-filter type="annotation"
+                                expression="org.springframework.stereotype.Controller"></context:exclude-filter>
+    </context:component-scan>
+    <!--引用外部配置文件-->
+    <!--
+        <context:property-placeholder location="classpath:jdbc.properties"/>
+    -->
+
+    <!--dbcp2链接池配置-->
+    <bean id="dataSource" class="org.apache.commons.dbcp2.BasicDataSource"
+          destroy-method="close">
+        <property name="driverClassName" value="${jdbc.driver}"/>
+        <property name="url" value="${jdbc.url}"/>
+        <property name="username" value="${jdbc.username}"/>
+        <property name="password" value="${jdbc.password}"/>
+        <!--初始连接数-->
+        <property name="initialSize" value="10"/>
+        <!--最大活动连接数-->
+        <property name="maxTotal" value="100"/>
+        <!--最大空闲连接数-->
+        <property name="maxIdle" value="50"/>
+        <!--最小空闲连接数-->
+        <property name="minIdle" value="10"/>
+        <!--设置为-1时，如果没有可用连接，连接池会一直无限期等待，直到获取到连接为止。-->
+        <!--如果设置为N（毫秒），则连接池会等待N毫秒，等待不到，则抛出异常-->
+        <property name="maxWaitMillis" value="-1"/>
+    </bean>
+
+    <!--4. spring和MyBatis整合 -->
+    <!--1) 创建sqlSessionFactory-->
+    <bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+        <!-- 指定数据源 -->
+        <property name="dataSource" ref="dataSource"/>
+        <!-- 自动扫描XxxMapping.xml文件，**任意路径 -->
+        <property name="mapperLocations" value="classpath*:mapping/*.xml"/>
+        <!-- 指定别名 -->
+        <property name="typeAliasesPackage" value="com/zking/**/model"/>
+        <!--配置pagehelper插件-->
+        <property name="plugins">
+            <array>
+                <bean class="com.github.pagehelper.PageInterceptor">
+                    <property name="properties">
+                        <value>
+                            helperDialect=mysql
+                        </value>
+                    </property>
+                </bean>
+            </array>
+        </property>
+    </bean>
+
+    <!--2) 自动扫描com/zking/oa/**/mapper下的所有XxxMapper接口(其实就是DAO接口)，并实现这些接口，-->
+    <!--   即可直接在程序中使用dao接口，不用再获取sqlsession对象-->
+    <bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+        <!--basePackage 属性是映射器接口文件的包路径。-->
+        <!--你可以使用分号或逗号 作为分隔符设置多于一个的包路径-->
+        <property name="basePackage" value="com/zking/**/mapper"/>
+        <property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"/>
+    </bean>
+
+    <!--注解式事务的配置-->
+    <bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+        <property name="dataSource" ref="dataSource"/>
+    </bean>
+    <!--注解是事务的驱动-->
+    <tx:annotation-driven transaction-manager="transactionManager"/>
+
+    <!--开启动态代理-->
+    <aop:aspectj-autoproxy/>
+
+    <!--配置realm-->
+    <bean id="shiroRealm" class="com.zking.shiro.MyRealm">
+        <property name="credentialsMatcher">
+            <bean id="credentialsMatcher" class="org.apache.shiro.authc.credential.HashedCredentialsMatcher">
+                <!--指定hash算法为MD5-->
+                <property name="hashAlgorithmName" value="md5"/>
+                <!--指定散列次数为1024次-->
+                <property name="hashIterations" value="1024"/>
+                <!--true指定Hash散列值使用Hex加密存. false表明hash散列值用用Base64-encoded存储-->
+                <property name="storedCredentialsHexEncoded" value="true"/>
+            </bean>
+        </property>
+    </bean>
+    <!--配置安全管理器-->
+    <bean id="securityManager" class="org.apache.shiro.web.mgt.DefaultWebSecurityManager">
+        <property name="realm" ref="shiroRealm"/>
+    </bean>
+
+    <!--Shiro核心过滤器-->
+    <bean id="shiroFilter" class="org.apache.shiro.spring.web.ShiroFilterFactoryBean">
+        <!-- Shiro的核心安全接口,这个属性是必须的 -->
+        <property name="securityManager" ref="securityManager"/>
+        <!-- 身份验证失败，跳转到登录页面 -->
+        <property name="loginUrl" value="/home/index.shtml"/>
+        <!-- 身份验证成功，跳转到指定页面 -->
+        <property name="successUrl" value="/index.jsp"/>
+        <!-- 权限验证失败，跳转到指定页面 -->
+        <property name="unauthorizedUrl" value="/noauthorizeUrl.jsp"/>
+        <!-- Shiro连接约束配置,即过滤链的定义 -->
+        <property name="filterChainDefinitions">
+            <value>
+                <!--anon 表示匿名访问，不需要认证以及授权-->
+                <!--authc表示需要认证 没有进行身份认证是不能进行访问的-->
+                /login=anon
+                /book/**=authc
+                <!-- /css/**               = anon
+                 /images/**            = anon
+                 /js/**                = anon
+                 /                     = anon
+                 /user/logout          = logout
+                 /user/**              = anon
+                 /userInfo/**          = authc
+                 /dict/**              = authc
+                 /console/**           = roles[admin]
+                 /**                   = anon-->
+            </value>
+        </property>
+    </bean>
+
+    <!--Shiro生命周期，保证实现了Shiro内部ifecycle函数的bean执行-->
+    <bean id="lifecycleBeanPostProcessor" class="org.apache.shiro.spring.LifecycleBeanPostProcessor"/>
+
+</beans>
