@@ -9,7 +9,7 @@ import javax.validation.constraints.Size;
 
 @Controller
 public class IndexController {
-
+/*isudbiussoido*/
     @Size(min = 1,max = 2)
     @RequestMapping("/")
     private String index(){
